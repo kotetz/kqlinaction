@@ -169,13 +169,28 @@ search オペレーターの検索結果には所属するテーブルを表す 
 - parse_json()
 - parse_csv()
 
+
+
+
+
+<details><summary>SecurityEvent テーブルの、EventSourceNameが Microsoft-Windows-AppLocker であるデータに含まれている TargetLogonId の一覧を 各コンピューターごとに表示してください</summary>
+
+```javascript
 SecurityEvent
 | where EventSourceName == "Microsoft-Windows-AppLocker"
 | extend RawEvent = parse_xml(EventData)
 | project Computer,tostring(tagetId=RawEvent.UserData.RuleAndFileData.TargetLogonId)
 | distinct Computer,tagetId 
 | summarize make_list(tagetId) by Computer
+```
+解説 :  
+SecurityEvent は LogAnalytics エージェントが収集するコンピューターのイベント ログです。イベントログによっては元の XML の情報が EventData カラムに含まれており、parse_xml で解析し、中のデータを扱うことができます。
+分析されたデータは型が不明な dynamic 型になるため、データを利用するためには明示的に型を指定する必要があります。この例では tostring 関数を使用して文字列に変換しています。   
+集計関数 make_list は指定したカラムからリストを作成します。今回の例の TargetLogonId は重複するものが多く、イベント自体の数も多いため事前に distinct で重複の除去を行っています。  
+parse_xml は負荷の高い処理なので、処理前のデータは where などでフィルタし、処理データを可能な限り少なくすることが推奨です。   
 
+
+</details>
 
 
 ### データを可視化する
@@ -186,19 +201,29 @@ SecurityEvent
 ### 複数のテーブルを検索する
 主に使用するオペレーター
 - union
-- join
+- [join](https://docs.microsoft.com/azure/data-explorer/kusto/query/joinoperator?pivots=azuremonitor)
 
 
+<details><summary>AzureDiagnostics と AzureMetrics テーブルから各リソースからどのような Category で診断ログが送られているか、どのような MetricName を使用できるかを１つの結果セットで表示してください。</summary>
 
-
+```javascript
 AzureDiagnostics
 | distinct Resource,Category
 |union (
     AzureMetrics
     | distinct Resource,MetricName
 )
+```
+解説 :  
+union オペレーターは 2 つのテーブルを縦に結合します。2 つのテーブルが同じカラムを含む場合そのカラムは連結されます。既定では双方のテーブルに含まれる全てのカラムが結果セットに含まれ、元々列が存在しなかったテーブルのセルには null が設定されます。この動作は kind 引数で変更することができ、kind=inner を設定すると結果セットは共通する列のみで作成されます。
+
+</details>
 
 
+
+<details><summary>AzureMetrics で各コンピューターが過去 24 時間に記録した Percentage CPU, Data Disk Read Bytes/sec と Data Disk Write Bytes/sec の最大値を 1 つの結果セットで表示してください。</summary>
+
+```javascript
 AzureMetrics
 | where MetricName == "Percentage CPU" 
 | summarize  CPUMax = max(Maximum) by  bin(TimeGenerated,1h),Resource 
@@ -213,6 +238,15 @@ AzureMetrics
     | summarize  DiskWriteMax = max(Maximum) by  bin(TimeGenerated,1h),Resource 
 ) on Resource,TimeGenerated
 | project TimeGenerated,Resource,CPUMax,DiskReadMax,DiskWriteMax
+```
+解説 :  
+join オペレーターはテーブルを横に連結し、
+
+</details>
+
+
+
+
 
 ### あるテーブルのデータを他の検索に利用する
 
